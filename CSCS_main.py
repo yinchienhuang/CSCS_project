@@ -41,8 +41,10 @@ class CompanyAgent:
         self.customers_id.remove(customer.id)
         
     def update_price(self, remaining_avg_max_price_customer, customers):
-        #To-do
-        #Update this strategy
+        # To-solve problem
+        # If all the company implement the same startegy, they tend to reach similar price and QOS, 
+        # which resulting in competing for the same group of customer.
+        # Need to find a way to assign different price strategy for different company
         if type(self) == CompanyAgent:
             self.total_demand = sum([c.demand for c in self.customers])
             self.excess_capacity = self.total_throughput - self.total_demand
@@ -54,6 +56,8 @@ class CompanyAgent:
 
     def build_and_launch_sat(self):
         self.recur_cost_this_month = 0
+        #some condition for the company to launch more satellite. Will need to adjust the strategy in the future
+        #target_sat_count is a ramdon number initialized as a "plan" for this company
         if self.capital > 600 and self.num_of_sat_on_orbit < self.target_sat_count and self.excess_capacity<10000:
             num_of_sat = random.randint(0,30)
             num_of_sat = self.capital/100/self.cost_per_sat
@@ -84,6 +88,7 @@ class CompanyAgent:
     def Condition_to_join_CSCS(self,num_of_company,num_of_CSCS):
         if num_of_CSCS==0:
             return None
+        # Join a random CSCS right now, should have some more condition, such as expected revenue
         target_CSCS_id = random.randint(num_of_company,num_of_company+num_of_CSCS-1)
         if type(self) == CompanyAgent and self.in_CSCS == False:
             if self.capital<10000 and self.excess_capacity > 10000:
@@ -171,6 +176,7 @@ class CustomerAgent: #a agent represent 1000 peopel
         current_grade = 0
         updated_this_loop = False
         for company in companies:
+            # grade = a1*(normolized price difference) + a2 * (normalized QOS difference)
             grade = a1*(self.max_acceptable_price - company.price)/self.max_acceptable_price + a2*(company.QOS-self.min_acceptable_QOS)/self.min_acceptable_QOS
             # print(grade)
             # print(company.price < self.max_acceptable_price , company.QOS>self.min_acceptable_QOS, grade > current_grade)
@@ -187,16 +193,11 @@ class CustomerAgent: #a agent represent 1000 peopel
                         self.set_active()
                         current_grade = grade
 
-            elif updated_this_loop == False:
+            elif updated_this_loop == False: #If there is no company achieve the requirement, set company to None
                 if self.company != None:
                     self.set_inactive()
                     self.company = None
                 current_grade = 0
-
-                # elif self.company != None:
-                #     self.set_inactive()
-                #     self.company = None
-                #     current_grade = 0
 
     def update_random_demand(self): #demand of 1000 people in total
         self.demand = random.randint(self.min_acceptable_QOS-5,self.min_acceptable_QOS)*1000
@@ -211,7 +212,7 @@ class Simulation:
     def __init__(self, num_companies, num_customers, num_CSCS):
         self.companies = []
         self.customers = []
-        self.CSCS =[]
+
         self.num_companies = num_companies
         self.num_customers = num_customers
         self.num_CSCS = num_CSCS
@@ -228,13 +229,13 @@ class Simulation:
         for i in range(num_customers):
             max_acceptable_price = random.randint(30, 120) #To-do set this profile
             max_acceptable_price = max_acceptable_price/1000 #Convert to million per 1000 people
-            min_acceptable_QOS = random.randint(1,50)
+            min_acceptable_QOS = random.randint(1,50) # Mb/person
             customer = CustomerAgent(i, max_acceptable_price, min_acceptable_QOS)
             self.customers.append(customer)
         
         for i in range(num_CSCS):
             CSCS = CSCSAgent(num_companies+i)
-            self.companies.append(CSCS)
+            self.companies.append(CSCS) #save CSCS in list of company
         
         # Assign customers to companies
         for customer in self.customers:
