@@ -166,15 +166,14 @@ class CustomerAgent: #a agent represent 1000 peopel
         self.company.remove_customer(self)
     #The strategy is to choose the company that can provide maximum bitrate with acceptable price
     def choose_company(self, companies):
-        a1 = 0.4 #propotion of price concern
-        a2 = 0.6 #propotion of QOS concern
+        a1 = 0.5 #propotion of price concern
+        a2 = 0.5 #propotion of QOS concern
         current_grade = 0
         updated_this_loop = False
         for company in companies:
             grade = a1*(self.max_acceptable_price - company.price)/self.max_acceptable_price + a2*(company.QOS-self.min_acceptable_QOS)/self.min_acceptable_QOS
             # print(grade)
-            print(company.price < self.max_acceptable_price , company.QOS>self.min_acceptable_QOS, grade > current_grade)
-
+            # print(company.price < self.max_acceptable_price , company.QOS>self.min_acceptable_QOS, grade > current_grade)
             if company.price < self.max_acceptable_price  and company.QOS > self.min_acceptable_QOS: #only when it reach the minimum requirement
                 updated_this_loop = True
                 if grade > current_grade: #chose the highest grade
@@ -291,7 +290,7 @@ class Simulation:
                     customer.update_random_demand()
                     for j, company in enumerate(self.companies):
                         company.cal_QOS()
-                    customer.show_basic_info()
+                    # customer.show_basic_info()
 
             for company in self.companies:
                 self.satellite_in_orbit[i] += company.num_of_sat_on_orbit
@@ -319,7 +318,7 @@ class Simulation:
                     company.update_price(remaining_avg_max_price_customer, self.adapting_percentage[i])
             print("****************************New Month********************************")
 
-        print(np.mean(self.revenue[0:4,num_steps-1],0))
+        print("Avg Revenue: ",np.mean(self.revenue[0:4,num_steps-1],0))
         print("adapting_percentage: ",self.adapting_percentage[num_steps-1])
 
         plt.subplot(331)
@@ -350,20 +349,20 @@ class Simulation:
         plt.title("QOS(Mb/person/s)")
         plt.subplot(335)
         plt.plot(self.adapting_percentage)
-        plt.title("Adapting rate")
+        plt.title("Adapting rate(%)")
         plt.subplot(336)
         plt.plot(self.remaining_avg_max_price_customer)
         plt.title("remaining_avg_max_price_person($/month)")
         plt.subplot(337)
         plt.plot(self.remaining_avg_acceptable_QOS)
-        plt.title("remaining_avg_acceptable_QOS")
+        plt.title("remaining_avg_acceptable_QOS(Mb/person/s)")
         plt.subplot(338)
         plt.plot(self.excess_capacity[0,:])
         plt.plot(self.excess_capacity[1,:])
         plt.plot(self.excess_capacity[2,:])
         plt.plot(self.excess_capacity[3,:])
         plt.plot(self.excess_capacity[4,:])
-        plt.title("Excess_capacity")
+        plt.title("Excess_capacity(Mb/s)")
         plt.subplot(339)
         # plt.plot(self.revenue[0,:])
         # plt.plot(self.revenue[1,:])
@@ -381,4 +380,6 @@ if __name__ == "__main__":
     #will bring down prices to $100/Mbps/month, which represents an estimated demand of 5 Tbps 
     #(currently the global satellite capacity for data networks is below 2 Tbps).
     Sim1.run(120) #10 years = 120
+
+    
 
