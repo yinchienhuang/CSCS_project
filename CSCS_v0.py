@@ -166,8 +166,8 @@ class CustomerAgent: #a agent represent 1000 peopel
         self.company.remove_customer(self)
     #The strategy is to choose the company that can provide maximum bitrate with acceptable price
     def choose_company(self, companies):
-        a1 = 0.5 #propotion of price concern
-        a2 = 0.5 #propotion of QOS concern
+        a1 = 0.4 #propotion of price concern
+        a2 = 0.6 #propotion of QOS concern
         current_grade = 0
         updated_this_loop = False
         for company in companies:
