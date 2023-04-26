@@ -9,19 +9,21 @@ class CompanyAgent:
 
     #Interaction between company and customer
         self.customers = []
+        self.intended_QOS = random.randint(2,80)
+        self.max_customer_count = 0
         self.customers_id = []
         self.in_CSCS = False
         self.CSCS = None
 
     #Satellite technical model
-        self.capacity_per_sat = 5000 #Mb/s
+        self.capacity_per_sat = 8000 #Mb/s
         self.num_of_sat_on_orbit = 0
         self.total_throughput = self.capacity_per_sat*self.num_of_sat_on_orbit
         self.throughput_per_custormer = 0
         self.QOS = 0
         self.total_demand = 0
         self.excess_capacity = 0
-        self.target_sat_count = random.randint(100,1000)
+        self.target_sat_count = 1000
 
     #Cost model
         self.price = price #price/1000 person/month
@@ -49,20 +51,22 @@ class CompanyAgent:
             self.total_demand = sum([c.demand for c in self.customers])
             self.excess_capacity = self.total_throughput - self.total_demand
 
-            if self.price > remaining_avg_max_price_customer*1.2:
-                self.price *= 0.95
-            elif self.price < remaining_avg_max_price_customer*0.8:
-                self.price *= 1.05
+            if self.price > remaining_avg_max_price_customer*0.8:
+                self.price *= 0.9
+            elif self.price < remaining_avg_max_price_customer*1.2:
+                self.price *= 1.1
+            self.price += self.intended_QOS*0.2/1000
 
     def build_and_launch_sat(self):
         self.recur_cost_this_month = 0
         #some condition for the company to launch more satellite. Will need to adjust the strategy in the future
         #target_sat_count is a ramdon number initialized as a "plan" for this company
-        if self.capital > 600 and self.num_of_sat_on_orbit < self.target_sat_count and self.excess_capacity<10000:
+        if self.capital > 600 and self.num_of_sat_on_orbit < self.target_sat_count: # and self.excess_capacity<10000
             num_of_sat = random.randint(0,30)
-            num_of_sat = self.capital/100/self.cost_per_sat
+            num_of_sat = round(self.capital/100/self.cost_per_sat)
             self.num_of_sat_on_orbit += num_of_sat
             self.recur_cost_this_month += num_of_sat*self.cost_per_sat
+            self.max_customer_count = self.total_throughput/self.intended_QOS/1000
         else:
             pass
             
@@ -72,7 +76,8 @@ class CompanyAgent:
     def cal_new_capital(self):
         # print(self.revenue_this_month,self.recur_cost_this_month,self.fixed_cost_each_month)
         self.capital += self.revenue_this_month - self.recur_cost_this_month - self.fixed_cost_each_month
-    
+        self.target_sat_count = self.capital/10
+        
     def cal_revenue_this_month(self):
         if self.in_CSCS == True:
             self.CSCS_revenue = self.CSCS.revenue_this_month*self.num_of_sat_on_orbit/self.CSCS.num_of_sat_on_orbit
@@ -139,11 +144,14 @@ class CSCSAgent(CompanyAgent): #Join CSCS, cost remain but has extra throughput
             self.price = (self.price*self.num_of_sat_on_orbit + company.price*company.num_of_sat_on_orbit)/(self.num_of_sat_on_orbit + company.num_of_sat_on_orbit)
             self.num_of_sat_on_orbit = self.num_of_sat_on_orbit + company.num_of_sat_on_orbit
             self.total_throughput = self.total_throughput+company.excess_capacity
-        self.price = 1.5 * self.price
+        # self.price = 1.5 * self.price
 
         self.throughput_per_custormer = self.total_throughput/max(len(self.customers),1)
         self.QOS = self.throughput_per_custormer/1000 #Mb/person/s
         self.revenue_this_month = len(self.customers)*self.price
+        # self.max_customer_count = 80
+        self.intended_QOS = 120
+        self.max_customer_count = self.total_throughput/self.intended_QOS/1000
 
     def show_CSCS_info(self):
         id_list = []
@@ -180,7 +188,8 @@ class CustomerAgent: #a agent represent 1000 peopel
             grade = a1*(self.max_acceptable_price - company.price)/self.max_acceptable_price + a2*(company.QOS-self.min_acceptable_QOS)/self.min_acceptable_QOS
             # print(grade)
             # print(company.price < self.max_acceptable_price , company.QOS>self.min_acceptable_QOS, grade > current_grade)
-            if company.price < self.max_acceptable_price  and company.QOS > self.min_acceptable_QOS: #only when it reach the minimum requirement
+            # and company.QOS > self.min_acceptable_QOS 
+            if company.price < self.max_acceptable_price and len(company.customers)<company.max_customer_count: #only when it reach the minimum requirement
                 updated_this_loop = True
                 if grade > current_grade: #chose the highest grade
                     if self.company == None:
@@ -219,7 +228,7 @@ class Simulation:
         
         # Create companies
         for i in range(num_companies):
-            price = random.randint(30, 120)# Dollar/person/month
+            price = random.randint(100, 200)# Dollar/person/month
             price = price/1000 #Convert to million per 1000 people
             capital = random.randint(1000, 10000) 
             company = CompanyAgent(i, price,capital)
@@ -227,9 +236,9 @@ class Simulation:
         
         # Create customers
         for i in range(num_customers):
-            max_acceptable_price = random.randint(30, 120) #To-do set this profile
+            max_acceptable_price = random.randint(30, 150) #To-do set this profile
             max_acceptable_price = max_acceptable_price/1000 #Convert to million per 1000 people
-            min_acceptable_QOS = random.randint(1,50) # Mb/person
+            min_acceptable_QOS = random.randint(20,50) # Mb/person
             customer = CustomerAgent(i, max_acceptable_price, min_acceptable_QOS)
             self.customers.append(customer)
         
@@ -250,6 +259,7 @@ class Simulation:
         self.total_capital = np.zeros(num_steps)
         self.num_of_unsatisfied_price = np.zeros(num_steps)
         self.num_of_unsatisfied_QOS = np.zeros(num_steps)
+        self.customers_count = np.zeros((self.num_companies+self.num_CSCS,num_steps))
         self.capital = np.zeros((self.num_companies+self.num_CSCS,num_steps))
         self.revenue = np.zeros((self.num_companies+self.num_CSCS,num_steps))
         self.excess_capacity = np.zeros((self.num_companies+self.num_CSCS,num_steps))
@@ -281,6 +291,7 @@ class Simulation:
                 self.total_capital[i] += company.capital
                 self.excess_capacity[j,i] = company.excess_capacity
                 self.revenue[j,i] = company.revenue_this_month
+                self.customers_count[j,i] = len(company.customers)
 
                 
             # customer switch company
@@ -319,7 +330,7 @@ class Simulation:
                     company.update_price(remaining_avg_max_price_customer, self.adapting_percentage[i])
             print("****************************New Month********************************")
 
-        print("Avg Revenue: ",np.mean(self.revenue[0:4,num_steps-1],0))
+        print("Total Revenue: ",np.sum(self.revenue[0:4,num_steps-1],0))
         print("adapting_percentage: ",self.adapting_percentage[num_steps-1])
 
         plt.subplot(331)
@@ -352,35 +363,64 @@ class Simulation:
         plt.plot(self.adapting_percentage)
         plt.title("Adapting rate(%)")
         plt.subplot(336)
-        plt.plot(self.remaining_avg_max_price_customer)
-        plt.title("remaining_avg_max_price_person($/month)")
+        plt.plot(np.mean(self.price,0))
+        plt.title("Price in market")
+        # plt.plot(self.remaining_avg_max_price_customer)
+        # plt.title("remaining_avg_max_price_person($/month)")
         plt.subplot(337)
-        plt.plot(self.remaining_avg_acceptable_QOS)
-        plt.title("remaining_avg_acceptable_QOS(Mb/person/s)")
+        plt.plot(np.sum(self.customers_count,0))
+        plt.title("Customer count")
+        # plt.plot(self.remaining_avg_acceptable_QOS)
+        # plt.title("remaining_avg_acceptable_QOS(Mb/person/s)")
         plt.subplot(338)
-        plt.plot(self.excess_capacity[0,:])
-        plt.plot(self.excess_capacity[1,:])
-        plt.plot(self.excess_capacity[2,:])
-        plt.plot(self.excess_capacity[3,:])
-        plt.plot(self.excess_capacity[4,:])
-        plt.title("Excess_capacity(Mb/s)")
+        # plt.plot(self.excess_capacity[0,:])
+        # plt.plot(self.excess_capacity[1,:])
+        # plt.plot(self.excess_capacity[2,:])
+        # plt.plot(self.excess_capacity[3,:])
+        # plt.plot(self.excess_capacity[4,:])
+        # plt.title("Excess_capacity(Mb/s)")
+        for i in range(4):
+            plt.plot(self.customers_count[i,:])
+        plt.title("Customer Count")
         plt.subplot(339)
-        # plt.plot(self.revenue[0,:])
-        # plt.plot(self.revenue[1,:])
-        # plt.plot(self.revenue[2,:])
-        # plt.plot(self.revenue[3,:])
-        # plt.plot(self.revenue[4,:])
-        plt.plot(np.mean(self.revenue[0:4,:],0))
+        plt.plot(self.revenue[0,:])
+        plt.plot(self.revenue[1,:])
+        plt.plot(self.revenue[2,:])
+        plt.plot(self.revenue[3,:])
+        plt.plot(self.revenue[4,:])
+        # plt.plot(np.mean(self.revenue[0:4,:],0))
         plt.title("Revenue this month")
 
+        mng = plt.get_current_fig_manager()
+        mng.full_screen_toggle()
+        plt.savefig("Result.png")
         plt.show()
+        
+
+        return (np.sum(self.revenue[0:self.num_companies-1,num_steps-1],0), self.adapting_percentage[num_steps-1])
 
 if __name__ == "__main__":
-    Sim1 = Simulation(5,5000,2) #5000 for 
+    #5000 for
     #It is envisioned that the next generation of satellites (to be launched within the next 2-5 years) 
     #will bring down prices to $100/Mbps/month, which represents an estimated demand of 5 Tbps 
     #(currently the global satellite capacity for data networks is below 2 Tbps).
-    Sim1.run(120) #10 years = 120
+    log  = False
+    if log == True:
+        trial = 20
+        revenue_log = np.zeros((2,trial))
+        adapting_rate_log = np.zeros((2,trial))
+        for i in range(trial):
+            Sim1 = Simulation(30,5000,0) 
+            (revenue_log[0,i],adapting_rate_log[0,i]) =  Sim1.run(120) #10 years = 120
+            Sim2 = Simulation(30,5000,2)
+            (revenue_log[1,i],adapting_rate_log[1,i]) = Sim2.run(120)
+        np.savetxt("revenue.csv",revenue_log,delimiter=",")
+        np.savetxt("adpating_rate.csv",adapting_rate_log,delimiter=",")
+        print(revenue_log)
+        print(adapting_rate_log)
+    else:
+        Sim1 = Simulation(30,5000,2) 
+        Sim1.run(120)
 
     
 
