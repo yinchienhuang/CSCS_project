@@ -2,6 +2,7 @@
 import random
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.stats import powerlaw
 
 class CompanyAgent:
     def __init__(self, id, price=100, capital = 1000):
@@ -32,6 +33,8 @@ class CompanyAgent:
         self.recur_cost_this_month = 0 #fixed cost each month (operational cost)
         self.non_recur_cost = 7.5 #R&D cost 
         self.revenue_this_month = 0
+        self.revenue_without_CSCS = 0
+        self.CSCS_revenue_rate = 0
         self.cost_per_sat = 0.75 #including launch
         
     def add_customer(self, customer):
@@ -47,13 +50,13 @@ class CompanyAgent:
         # If all the company implement the same startegy, they tend to reach similar price and QOS, 
         # which resulting in competing for the same group of customer.
         # Need to find a way to assign different price strategy for different company
-        if type(self) == CompanyAgent:
+        if type(self) == CompanyAgent or CSCSAgent:
             self.total_demand = sum([c.demand for c in self.customers])
             self.excess_capacity = self.total_throughput - self.total_demand
 
-            if self.price > remaining_avg_max_price_customer*0.8:
+            if self.price > remaining_avg_max_price_customer*0.8 or len(self.customers)< self.max_customer_count:
                 self.price *= 0.9
-            elif self.price < remaining_avg_max_price_customer*1.2:
+            elif self.price < remaining_avg_max_price_customer*1.2 or len(self.customers) >= self.max_customer_count:
                 self.price *= 1.1
             self.price += self.intended_QOS*0.2/1000
 
@@ -83,7 +86,11 @@ class CompanyAgent:
             self.CSCS_revenue = self.CSCS.revenue_this_month*self.num_of_sat_on_orbit/self.CSCS.num_of_sat_on_orbit
         else:
             self.CSCS_revenue = 0
-        self.revenue_this_month = len(self.customers)*self.price + self.CSCS_revenue
+
+        self.revenue_without_CSCS = len(self.customers)*self.price
+        self.revenue_this_month = self.revenue_without_CSCS  + self.CSCS_revenue
+        if self.revenue_this_month != 0:
+            self.CSCS_revenue_rate = self.CSCS_revenue/self.revenue_this_month*100
 
     def cal_QOS(self):
         self.total_throughput = self.capacity_per_sat*self.num_of_sat_on_orbit
@@ -106,6 +113,7 @@ class CompanyAgent:
         for CSCS in all_CSCS:
             if (CSCS.id == target_CSCS_id) and (self not in CSCS.comp_in_CSCS_list):
                 CSCS.comp_in_CSCS_list.append(self)
+                CSCS.update_CSCS()
                 self.in_CSCS = True
                 self.CSCS = CSCS
                 print(CSCS.id)
@@ -115,6 +123,7 @@ class CompanyAgent:
         print("Company Id:",self.id)
         print("Agent type:", type(self))
         print("Customer count: ",len(self.customers_id))
+        print("Max customer count: ",self.max_customer_count)
         # print("Customer list: ", self.customers_id)
         # print("Price(million/1000people/month): ",self.price)
         print("Price per person($):", self.price/1000*1000000)
@@ -138,20 +147,21 @@ class CSCSAgent(CompanyAgent): #Join CSCS, cost remain but has extra throughput
 
     def update_CSCS(self):
         self.num_of_sat_on_orbit = 0
-        self.price = 0
+        self.ini_price = 0
         self.total_throughput = 0
         for company in self.comp_in_CSCS_list:
-            self.price = (self.price*self.num_of_sat_on_orbit + company.price*company.num_of_sat_on_orbit)/(self.num_of_sat_on_orbit + company.num_of_sat_on_orbit)
+            self.ini_price = (self.price*self.num_of_sat_on_orbit + company.price*company.num_of_sat_on_orbit)/(self.num_of_sat_on_orbit + company.num_of_sat_on_orbit)
             self.num_of_sat_on_orbit = self.num_of_sat_on_orbit + company.num_of_sat_on_orbit
             self.total_throughput = self.total_throughput+company.excess_capacity
-        # self.price = 1.5 * self.price
+        # self.price = 0.2 * self.price
 
         self.throughput_per_custormer = self.total_throughput/max(len(self.customers),1)
         self.QOS = self.throughput_per_custormer/1000 #Mb/person/s
         self.revenue_this_month = len(self.customers)*self.price
         # self.max_customer_count = 80
-        self.intended_QOS = 120
+        self.intended_QOS = 10
         self.max_customer_count = self.total_throughput/self.intended_QOS/1000
+        self.price = self.ini_price
 
     def show_CSCS_info(self):
         id_list = []
@@ -185,13 +195,13 @@ class CustomerAgent: #a agent represent 1000 peopel
         updated_this_loop = False
         for company in companies:
             # grade = a1*(normolized price difference) + a2 * (normalized QOS difference)
-            grade = a1*(self.max_acceptable_price - company.price)/self.max_acceptable_price + a2*(company.QOS-self.min_acceptable_QOS)/self.min_acceptable_QOS
+            grade = a1*(self.max_acceptable_price - company.price)/self.max_acceptable_price + a2*(company.QOS-self.min_acceptable_QOS)/company.QOS
             # print(grade)
-            # print(company.price < self.max_acceptable_price , company.QOS>self.min_acceptable_QOS, grade > current_grade)
+            # print(company.price < self.max_acceptable_price , company.QOS>self.min_acceptable_QOS, grade > current_grade, len(company.customers)<company.max_customer_count)
             # and company.QOS > self.min_acceptable_QOS 
             if company.price < self.max_acceptable_price and len(company.customers)<company.max_customer_count: #only when it reach the minimum requirement
-                updated_this_loop = True
                 if grade > current_grade: #chose the highest grade
+                    updated_this_loop = True
                     if self.company == None:
                         self.company = company
                         self.set_active()
@@ -201,7 +211,6 @@ class CustomerAgent: #a agent represent 1000 peopel
                         self.company = company
                         self.set_active()
                         current_grade = grade
-
             elif updated_this_loop == False: #If there is no company achieve the requirement, set company to None
                 if self.company != None:
                     self.set_inactive()
@@ -209,7 +218,7 @@ class CustomerAgent: #a agent represent 1000 peopel
                 current_grade = 0
 
     def update_random_demand(self): #demand of 1000 people in total
-        self.demand = random.randint(self.min_acceptable_QOS-5,self.min_acceptable_QOS)*1000
+        self.demand = random.randint(round(self.min_acceptable_QOS-5),round(self.min_acceptable_QOS))*1000
 
     def show_basic_info(self):
         print("Customer",self.id,"Chosed company: ",self.company.id if self.company is not None else None)
@@ -221,7 +230,8 @@ class Simulation:
     def __init__(self, num_companies, num_customers, num_CSCS):
         self.companies = []
         self.customers = []
-
+        self.price_preference_profile = []
+        self.QOS_preference_profile = []
         self.num_companies = num_companies
         self.num_customers = num_customers
         self.num_CSCS = num_CSCS
@@ -236,9 +246,24 @@ class Simulation:
         
         # Create customers
         for i in range(num_customers):
-            max_acceptable_price = random.randint(30, 150) #To-do set this profile
+            min_price = 20
+            max_price = 150
+            scale_parameter = 0.5
+            max_acceptable_price = powerlaw.rvs(scale_parameter, 0)*max_price + min_price
+            self.price_preference_profile.append(max_acceptable_price)
             max_acceptable_price = max_acceptable_price/1000 #Convert to million per 1000 people
-            min_acceptable_QOS = random.randint(20,50) # Mb/person
+
+            min_QOS = 20
+            max_QOS = 300
+            scale_parameter = 0.2
+            min_acceptable_QOS = powerlaw.rvs(scale_parameter, 0)*max_QOS + min_QOS
+            self.QOS_preference_profile.append(min_acceptable_QOS)
+
+            customer = CustomerAgent(i, max_acceptable_price,min_acceptable_QOS)
+
+            # max_acceptable_price = random.randint(30, 150) #To-do set this profile
+            # max_acceptable_price = max_acceptable_price/1000 #Convert to million per 1000 people
+            
             customer = CustomerAgent(i, max_acceptable_price, min_acceptable_QOS)
             self.customers.append(customer)
         
@@ -254,11 +279,12 @@ class Simulation:
 
         self.satellite_in_orbit = np.zeros(num_steps)
         self.adapting_percentage = np.zeros(num_steps)
-        self.remaining_avg_max_price_customer = np.zeros(num_steps)
-        self.remaining_avg_acceptable_QOS = np.zeros(num_steps)
+        self.remaining_max_price_customer = []
+        self.remaining_acceptable_QOS = []
         self.total_capital = np.zeros(num_steps)
         self.num_of_unsatisfied_price = np.zeros(num_steps)
         self.num_of_unsatisfied_QOS = np.zeros(num_steps)
+        self.CSCS_revenue_rate = np.zeros((self.num_companies+self.num_CSCS,num_steps))
         self.customers_count = np.zeros((self.num_companies+self.num_CSCS,num_steps))
         self.capital = np.zeros((self.num_companies+self.num_CSCS,num_steps))
         self.revenue = np.zeros((self.num_companies+self.num_CSCS,num_steps))
@@ -267,8 +293,11 @@ class Simulation:
         self.QOS = np.zeros((self.num_companies+self.num_CSCS,num_steps))
 
         print("*********************************************Begin Simulation***************************************************")
-        
+         
         for i in range(num_steps):
+            self.remaining_max_price_customer = []
+            self.remaining_acceptable_QOS = []
+
             print("Month ",i)
 
             # Update prices
@@ -281,9 +310,10 @@ class Simulation:
                 company.cal_new_capital()
                 if company.Condition_to_join_CSCS(self.num_companies,self.num_CSCS) != None:
                     company.Join_CSCS(company.Condition_to_join_CSCS(self.num_companies,self.num_CSCS),self.companies)
+
                 company.show_basic_info()
                 if type(company) == CSCSAgent:
-                    company.update_CSCS()
+                    # company.update_CSCS()
                     company.show_CSCS_info()
                 self.price[j,i] = company.price*1000
                 self.QOS[j,i] = company.QOS if len(company.customers)>0 else 0
@@ -292,6 +322,7 @@ class Simulation:
                 self.excess_capacity[j,i] = company.excess_capacity
                 self.revenue[j,i] = company.revenue_this_month
                 self.customers_count[j,i] = len(company.customers)
+                self.CSCS_revenue_rate[j,i] = company.CSCS_revenue_rate
 
                 
             # customer switch company
@@ -305,23 +336,22 @@ class Simulation:
                     # customer.show_basic_info()
 
             for company in self.companies:
-                self.satellite_in_orbit[i] += company.num_of_sat_on_orbit
+                if type(company) == CompanyAgent:
+                    self.satellite_in_orbit[i] += company.num_of_sat_on_orbit
 
             satisfied_demand_count = 0
             unusatisfied_demand_count = 0
             remaining_acceptable_price_sum = 0 
-            remaining_acceptable_QOS_sum = 0
+            # remaining_acceptable_QOS_sum = 0
             for customer in self.customers:
                 if customer.company == None:
-                    unusatisfied_demand_count+=1
-                    remaining_acceptable_price_sum+=customer.max_acceptable_price
-                    remaining_acceptable_QOS_sum+=customer.min_acceptable_QOS
+                    self.remaining_max_price_customer.append(customer.max_acceptable_price*1000)
+                    self.remaining_acceptable_QOS.append(customer.min_acceptable_QOS)
+                    unusatisfied_demand_count += 1
                 else:
                     satisfied_demand_count +=1
             remaining_avg_max_price_customer = remaining_acceptable_price_sum/unusatisfied_demand_count
-            remaining_avg_acceptable_QOS = remaining_acceptable_QOS_sum/unusatisfied_demand_count
-            self.remaining_avg_max_price_customer[i] = remaining_avg_max_price_customer*1000 
-            self.remaining_avg_acceptable_QOS[i] = remaining_avg_acceptable_QOS
+            # remaining_avg_acceptable_QOS = remaining_acceptable_QOS_sum/unusatisfied_demand_count
             self.adapting_percentage[i] = (1-unusatisfied_demand_count/self.num_customers)*100
             
 
@@ -330,72 +360,86 @@ class Simulation:
                     company.update_price(remaining_avg_max_price_customer, self.adapting_percentage[i])
             print("****************************New Month********************************")
 
-        print("Total Revenue: ",np.sum(self.revenue[0:4,num_steps-1],0))
+        # print("Total Revenue: ",np.sum(self.revenue[0:4,num_steps-1],0))
         print("adapting_percentage: ",self.adapting_percentage[num_steps-1])
 
         plt.subplot(331)
         plt.plot(self.satellite_in_orbit)
         plt.title("Total satellite in orbit")
-        plt.subplot(332)
-        plt.plot(self.capital[0,:])
-        plt.plot(self.capital[1,:])
-        plt.plot(self.capital[2,:])
-        plt.plot(self.capital[3,:])
-        plt.plot(self.capital[4,:])
-        # plt.plot(self.total_capital)
-        plt.title("Total capital in market")
-        plt.subplot(333)
-        # plt.plot(np.mean(self.price,0))
-        plt.plot(self.price[0,:])
-        plt.plot(self.price[1,:])
-        plt.plot(self.price[2,:])
-        plt.plot(self.price[3,:])
-        plt.plot(self.price[4,:])
-        plt.title("Price per person($/month) in market")
-        plt.subplot(334)
-        plt.plot(self.QOS[0,:])
-        plt.plot(self.QOS[1,:])
-        plt.plot(self.QOS[2,:])
-        plt.plot(self.QOS[3,:])
-        plt.plot(self.QOS[4,:])
-        plt.title("QOS(Mb/person/s)")
-        plt.subplot(335)
-        plt.plot(self.adapting_percentage)
-        plt.title("Adapting rate(%)")
-        plt.subplot(336)
-        plt.plot(np.mean(self.price,0))
-        plt.title("Price in market")
-        # plt.plot(self.remaining_avg_max_price_customer)
-        # plt.title("remaining_avg_max_price_person($/month)")
-        plt.subplot(337)
-        plt.plot(np.sum(self.customers_count,0))
-        plt.title("Customer count")
-        # plt.plot(self.remaining_avg_acceptable_QOS)
-        # plt.title("remaining_avg_acceptable_QOS(Mb/person/s)")
-        plt.subplot(338)
-        # plt.plot(self.excess_capacity[0,:])
-        # plt.plot(self.excess_capacity[1,:])
-        # plt.plot(self.excess_capacity[2,:])
-        # plt.plot(self.excess_capacity[3,:])
-        # plt.plot(self.excess_capacity[4,:])
-        # plt.title("Excess_capacity(Mb/s)")
-        for i in range(4):
-            plt.plot(self.customers_count[i,:])
-        plt.title("Customer Count")
-        plt.subplot(339)
-        plt.plot(self.revenue[0,:])
-        plt.plot(self.revenue[1,:])
-        plt.plot(self.revenue[2,:])
-        plt.plot(self.revenue[3,:])
-        plt.plot(self.revenue[4,:])
-        # plt.plot(np.mean(self.revenue[0:4,:],0))
-        plt.title("Revenue this month")
 
+        plt.subplot(332)
+        plt.plot(np.mean(self.price,0),label = "Avg price")
+        # plt.plot(self.price[self.num_companies+1,:],label = "CSCS price")
+        plt.title("Price in market($/person/month)")
+
+        plt.subplot(333)
+        plt.plot(self.adapting_percentage)
+        plt.title("User adapting rate(%)")
+        plt.ylim(0,100)
+
+        plt.subplot(334)
+        for i in range(5):
+            plt.plot(self.QOS[i,:])
+        plt.title("QOS(Mb/person/s)")
+
+        plt.subplot(335)
+        plt.hist(self.price_preference_profile, histtype = "step",label="original demand")
+        plt.hist(self.remaining_max_price_customer,label="unsatisfied demand")
+        plt.title("Customer price preference profile")
+        plt.xlabel("$/person/month")
+        plt.ylabel("Thousand people")
+        plt.legend()
+        plt.ylim(0,2000)
+
+        plt.subplot(336)
+        plt.hist(self.QOS_preference_profile, histtype = "step",label="original demand")
+        plt.hist(self.remaining_acceptable_QOS,label="unsatisfied demand")
+        plt.title("Customer QOS preference profile")
+        plt.legend()
+        plt.xlabel("QOS(Mb)")
+        plt.ylabel("Thousand people")
+        plt.ylim(0,3500)
+
+        plt.subplot(337)
+        # for i in range(5):
+        #     plt.plot(self.capital[i,:])
+        plt.plot(np.sum(self.capital[0:self.num_companies-1],0),label = "Total capital")
+        plt.ylim(100000,180000)
+        # plt.plot(np.mean(self.capital,0),label = "Avg capital")
+        plt.legend()
+        plt.title("Total capital in market(Million)")
+
+
+        plt.subplot(338)
+        for i in range(5):
+            plt.plot(self.CSCS_revenue_rate[i,:])
+        plt.plot(np.mean(self.CSCS_revenue_rate[0:self.num_companies-1],0), label = "Avg CSCS revenue rate")
+        plt.title("Revenue percentage from CSCS(%)")
+        
+        plt.subplot(339)
+        # for i in range(5):
+        #     plt.plot(self.revenue[i,:])
+        plt.plot(np.mean(self.revenue[0:self.num_companies-1],0),label = "Avg revenue")
+        plt.plot(np.sum(self.revenue[0:self.num_companies-1],0),label = "Total revenue")
+
+        plt.legend()
+        plt.title("Revenue per month(Million)")
+
+
+        plt.subplots_adjust(left=0.1,
+                    bottom=0.1,
+                    right=0.9,
+                    top=0.9,
+                    wspace=0.4,
+                    hspace=0.4)
         mng = plt.get_current_fig_manager()
         mng.full_screen_toggle()
-        plt.savefig("Result.png")
+        if self.num_CSCS == 0:
+            plt.savefig("Result_no_CSCS.png")
+        else:
+            plt.savefig("Result_with_" + str(self.num_CSCS) + "_CSCS.png")
+
         plt.show()
-        
 
         return (np.sum(self.revenue[0:self.num_companies-1,num_steps-1],0), self.adapting_percentage[num_steps-1])
 
@@ -419,8 +463,8 @@ if __name__ == "__main__":
         print(revenue_log)
         print(adapting_rate_log)
     else:
-        Sim1 = Simulation(30,5000,2) 
-        Sim1.run(120)
+        Sim1 = Simulation(30,5000,0) 
+        Sim1.run(240)
 
     
 
