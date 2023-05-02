@@ -1,0 +1,10 @@
+cff-version: 1.0.0
+message: "If you use this software, please cite it as below."
+authors:
+  - family-names: Huang
+    given-names: Yinchien
+    orcid: 
+title: "Collaborative Satellite Communication System"
+version: 1.0.0
+doi: 
+date-released: 2023-05-02
