@@ -21,3 +21,6 @@ These people actually built a game for the mega satellite constellation, economi
 
 https://arc.aiaa.org/doi/10.2514/1.6346
 This paper contains risk analysis of staged deployment strategy for satellite constellation.
+
+https://arc.aiaa.org/doi/10.2514/1.I010497
+This discuss the federated satellite idea.
