@@ -18,3 +18,6 @@ This paper contains a demand model(p237) and cost estimation method(p159).
 
 https://apps.dtic.mil/sti/pdfs/AD1163306.pdf
 These people actually built a game for the mega satellite constellation, economically. We can use the framework of the time step and decision making process from it.
+
+https://arc.aiaa.org/doi/10.2514/1.6346
+This paper contains risk analysis of staged deployment strategy for satellite constellation.
