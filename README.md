@@ -24,3 +24,6 @@ This paper contains risk analysis of staged deployment strategy for satellite co
 
 https://arc.aiaa.org/doi/10.2514/1.I010497
 This discuss the federated satellite idea.
+
+https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=9079470&tag=1
+Cubesat communication
